@@ -73,17 +73,45 @@ const OSGB36_PROJ =
   '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +datum=OSGB36 +units=m +no_defs';
 const WGS84_PROJ = '+proj=longlat +datum=WGS84 +no_defs';
 
-// Converts an OSGB36 easting/northing pair to WGS84 lat/lon, or null if the
-// input is not numeric or the conversion throws.
+// Converts an OSGB36 easting/northing pair to WGS84 lat/lon. Returns
+// { lat, lon } on success, or { error } with a reason/message on failure.
 function convertEastingNorthingToLatLon(easting, northing) {
-  if (isNaN(easting) || isNaN(northing)) return null;
-  try {
-    const converted = proj4(OSGB36_PROJ, WGS84_PROJ, [easting, northing]);
-    return { lat: converted[1], lon: converted[0] };
-  } catch (e) {
-    console.error('Coordinate conversion failed:', e);
-    return null;
+  const e = Number(easting);
+  const n = Number(northing);
+  if (!Number.isFinite(e) || !Number.isFinite(n)) {
+    return { error: 'invalid_easting_northing' };
   }
+  try {
+    const converted = proj4(OSGB36_PROJ, WGS84_PROJ, [e, n]);
+    return { lat: converted[1], lon: converted[0] };
+  } catch (err) {
+    return { error: String(err?.message ?? err) };
+  }
+}
+
+// Self-test the conversion against a known OSGB36 -> WGS84 reference point
+// (OSGB 531691,182089 ~= lat 51.52237, lon -0.10322). Guards against silent
+// coordinate regressions, e.g. proj4 quietly skipping the datum shift.
+const REF_EASTING = 531691;
+const REF_NORTHING = 182089;
+const REF_LAT = 51.52237;
+const REF_LON = -0.10322;
+const REF_TOLERANCE = 0.001;
+
+function verifyConversion() {
+  const ref = convertEastingNorthingToLatLon(REF_EASTING, REF_NORTHING);
+  if (!ref || ref.error) {
+    throw new Error(`Coordinate self-test failed: reference point did not convert (${ref?.error ?? 'unknown'})`);
+  }
+  if (
+    Math.abs(ref.lat - REF_LAT) > REF_TOLERANCE ||
+    Math.abs(ref.lon - REF_LON) > REF_TOLERANCE
+  ) {
+    throw new Error(
+      `Coordinate self-test failed: expected (${REF_LAT}, ${REF_LON}) but got (${ref.lat}, ${ref.lon})`
+    );
+  }
+  console.log(`[coords] self-test OK: (${REF_EASTING}, ${REF_NORTHING}) -> (${ref.lat.toFixed(5)}, ${ref.lon.toFixed(5)})`);
 }
 
 // Formats a Date as a friendly UK-time string (handles BST automatically).
@@ -266,6 +294,9 @@ async function main() {
     `[json] ${records.length} stop records, ${headers.length} source columns`
   );
 
+  // Sanity-check the conversion before trusting it for the whole dataset.
+  verifyConversion();
+
   // Trim each record to just the columns the sites use. Any stop with a
   // blank Latitude/Longitude is re-derived from its Easting/Northing. Stops
   // that can't be converted are kept with blank coordinates and reported in
@@ -278,24 +309,24 @@ async function main() {
       const easting = r['Easting'] ?? '';
       const northing = r['Northing'] ?? '';
       const converted = convertEastingNorthingToLatLon(easting, northing);
-      if (converted && converted.lat && converted.lon) {
+      if (converted && !converted.error && converted.lat && converted.lon) {
         out.Latitude = String(converted.lat);
         out.Longitude = String(converted.lon);
       } else {
-        let reason;
-        if (String(easting).trim() === '' || String(northing).trim() === '') {
-          reason = 'missing_easting_northing';
-        } else if (isNaN(easting) || isNaN(northing)) {
-          reason = 'invalid_easting_northing';
-        } else {
-          reason = 'conversion_failed';
-        }
+        const missing =
+          String(easting).trim() === '' || String(northing).trim() === '';
+        const reason = missing
+          ? 'missing_easting_northing'
+          : converted?.error === 'invalid_easting_northing'
+            ? 'invalid_easting_northing'
+            : 'conversion_failed';
         conversionErrors.push({
           atcoCode: out.ATCOCode,
           commonName: out.CommonName,
           easting,
           northing,
           reason,
+          error: missing ? '' : converted?.error ?? '',
         });
       }
     }
@@ -340,11 +371,11 @@ async function main() {
   const errorsHtml = conversionErrors.length
     ? `<h2>Conversion errors (${conversionErrors.length})</h2>
 <table>
-<thead><tr><th>ATCOCode</th><th>CommonName</th><th>Easting</th><th>Northing</th><th>Reason</th></tr></thead>
+<thead><tr><th>ATCOCode</th><th>CommonName</th><th>Easting</th><th>Northing</th><th>Reason</th><th>Error</th></tr></thead>
 <tbody>
 ${conversionErrors
   .map(
-    (e) => `<tr><td>${escapeHtml(e.atcoCode)}</td><td>${escapeHtml(e.commonName)}</td><td>${escapeHtml(e.easting)}</td><td>${escapeHtml(e.northing)}</td><td>${escapeHtml(e.reason)}</td></tr>`
+    (e) => `<tr><td>${escapeHtml(e.atcoCode)}</td><td>${escapeHtml(e.commonName)}</td><td>${escapeHtml(e.easting)}</td><td>${escapeHtml(e.northing)}</td><td>${escapeHtml(e.reason)}</td><td>${escapeHtml(e.error)}</td></tr>`
   )
   .join('\n')}
 </tbody>
