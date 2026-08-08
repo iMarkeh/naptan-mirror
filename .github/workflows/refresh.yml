@@ -1,0 +1,44 @@
+name: Refresh Naptan cache
+
+on:
+  schedule:
+    # Every 8 hours UTC (00:00, 08:00, 16:00)
+    - cron: '0 */8 * * *'
+  workflow_dispatch: {}     # manual "Run workflow" button
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: naptan-refresh
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Download & transform NaPTAN
+        env:
+          NAPTAN_URL: ${{ vars.NAPTAN_URL }}
+        run: npm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy public --project-name=naptan-mirror --branch main

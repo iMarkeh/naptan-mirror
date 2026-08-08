@@ -1,0 +1,6 @@
+/naptan.json
+  Cache-Control: public, max-age=3600
+/naptan.csv
+  Cache-Control: public, max-age=3600
+/meta.json
+  Cache-Control: public, max-age=300
