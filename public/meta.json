@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-08T22:43:14.931Z",
+  "generatedAt": "2026-08-08T23:10:17.647Z",
   "nextUpdate": "2026-08-09T00:47:00.000Z",
   "source": "https://naptan.api.dft.gov.uk/v1/access-nodes?dataFormat=csv",
   "recordCount": 435278,
@@ -21,7 +21,7 @@
     "Status"
   ],
   "csvHash": "c6e40a4d106b6feb",
-  "jsonHash": "7562b88351133e67",
+  "jsonHash": "dede7a2d3891aaec",
   "formats": {
     "json": "https://github.com/iMarkeh/naptan-mirror/releases/download/data/naptan.json",
     "csv": "https://github.com/iMarkeh/naptan-mirror/releases/download/data/naptan.csv"
