@@ -4,7 +4,8 @@
 // 1. Downloads the full UK NaPTAN dataset (CSV) from the DfT endpoint.
 // 2. Saves a trimmed copy of it as data/naptan.csv, keeping only the
 //    columns listed in JSON_COLUMNS (the ones the sites actually use).
-// 3. Also parses it into data/naptan.json with the same columns.
+// 3. Also parses it into data/naptan.json with the same columns, as a
+//    matrix (row 0 is the header, each following row is one record).
 // 4. Emits public/meta.json (timestamps, record count, hashes, download
 //    URLs) and public/index.html (a small status page: links + last
 //    refreshed / next update due).
@@ -210,6 +211,12 @@ function toCsv(records, columns) {
   return lines.join('\n');
 }
 
+// Serialises trimmed records as a JSON matrix: row 0 is the header (the
+// column names), each following row is one record's values in that order.
+function toMatrix(records, columns) {
+  return [columns.slice(), ...records.map((r) => columns.map((c) => r[c] ?? ''))];
+}
+
 function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex').slice(0, 16);
 }
@@ -236,7 +243,7 @@ async function main() {
   });
 
   const jsonPath = join(DATA_DIR, 'naptan.json');
-  await writeFile(jsonPath, JSON.stringify(jsonRecords));
+  await writeFile(jsonPath, JSON.stringify(toMatrix(jsonRecords, JSON_COLUMNS)));
   const jsonHash = sha256(await readFile(jsonPath));
 
   // The CSV is trimmed to the same columns as the JSON (not a byte-for-byte
