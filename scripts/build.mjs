@@ -2,9 +2,9 @@
 // Naptan Mirror build script
 //
 // 1. Downloads the full UK NaPTAN dataset (CSV) from the DfT endpoint.
-// 2. Saves the download byte-for-byte as data/naptan.csv.
-// 3. Also parses it into data/naptan.json, keeping only the columns listed
-//    in JSON_COLUMNS (the ones the sites actually use).
+// 2. Saves a trimmed copy of it as data/naptan.csv, keeping only the
+//    columns listed in JSON_COLUMNS (the ones the sites actually use).
+// 3. Also parses it into data/naptan.json with the same columns.
 // 4. Emits public/meta.json (timestamps, record count, hashes, download
 //    URLs) and public/index.html (a small status page: links + last
 //    refreshed / next update due).
@@ -14,7 +14,7 @@
 // instead. The small files in public/ are deployed to Cloudflare Pages.
 
 import { createWriteStream } from 'node:fs';
-import { mkdir, writeFile, rm, copyFile, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { finished } from 'node:stream/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -45,8 +45,8 @@ const NAPTAN_URL =
 const REFRESH_HOURS_UTC = [0, 8, 16];
 const REFRESH_MINUTES_UTC = 47;
 
-// Only these columns go into data/naptan.json. The CSV stays a full
-// byte-for-byte mirror; the JSON is trimmed to what the sites actually use.
+// Only these columns go into data/naptan.json and data/naptan.csv. The
+// sites don't need the rest, so the published files stay small.
 const JSON_COLUMNS = [
   'ATCOCode',
   'NaptanCode',
@@ -196,6 +196,21 @@ function parseCsv(text) {
   return { headers, records };
 }
 
+// Quotes a single CSV field if it contains a comma, quote, or newline.
+function csvEscape(value) {
+  const s = String(value);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+// Serialises trimmed records back to CSV with the given column order.
+function toCsv(records, columns) {
+  const lines = [columns.map(csvEscape).join(',')];
+  for (const r of records) {
+    lines.push(columns.map((c) => csvEscape(r[c] ?? '')).join(','));
+  }
+  return lines.join('\n');
+}
+
 function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex').slice(0, 16);
 }
@@ -205,14 +220,8 @@ async function main() {
   await mkdir(DATA_DIR, { recursive: true });
   await download(NAPTAN_URL, TMP_CSV);
 
-  // The raw download is saved as-is (byte-for-byte).
-  const csvPath = join(DATA_DIR, 'naptan.csv');
-  await copyFile(TMP_CSV, csvPath);
-  const csvHash = sha256(await readFile(csvPath));
-  console.log(`[csv] saved raw download -> data/naptan.csv (hash=${csvHash})`);
-
-  // Parse the same download to produce the JSON version, using the file's
-  // own columns so nothing needs maintaining when DfT changes the format.
+  // Parse the download, using the file's own columns so nothing needs
+  // maintaining when DfT changes the format.
   const text = await readFile(TMP_CSV, 'utf8');
   console.log('[json] parsing CSV...');
   const { headers, records } = parseCsv(text);
@@ -230,6 +239,13 @@ async function main() {
   const jsonPath = join(DATA_DIR, 'naptan.json');
   await writeFile(jsonPath, JSON.stringify(jsonRecords));
   const jsonHash = sha256(await readFile(jsonPath));
+
+  // The CSV is trimmed to the same columns as the JSON (not a byte-for-byte
+  // mirror of the source download).
+  const csvPath = join(DATA_DIR, 'naptan.csv');
+  await writeFile(csvPath, toCsv(jsonRecords, JSON_COLUMNS));
+  const csvHash = sha256(await readFile(csvPath));
+  console.log(`[csv] saved trimmed data -> data/naptan.csv (hash=${csvHash})`);
 
   const generatedAt = new Date();
   const nextUpdate = nextRefresh(generatedAt);
