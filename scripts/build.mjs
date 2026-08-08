@@ -3,8 +3,8 @@
 //
 // 1. Downloads the full UK NaPTAN dataset (CSV) from the DfT endpoint.
 // 2. Saves the download byte-for-byte as data/naptan.csv.
-// 3. Also parses it into data/naptan.json, using whatever columns the
-//    file actually has (no fixed column list to maintain).
+// 3. Also parses it into data/naptan.json, keeping only the columns listed
+//    in JSON_COLUMNS (the ones the sites actually use).
 // 4. Emits public/meta.json (timestamps, record count, hashes, download
 //    URLs) and public/index.html (a small status page: links + last
 //    refreshed / next update due).
@@ -40,8 +40,30 @@ const NAPTAN_URL =
   process.env.NAPTAN_URL ||
   'https://naptan.api.dft.gov.uk/v1/access-nodes?dataFormat=csv';
 
-// Refresh schedule in UTC hours, matching the workflow cron '0 */8 * * *'.
+// Refresh schedule in UTC, matching the workflow cron '47 */8 * * *'
+// (00:47, 08:47, 16:47). The :47 offset dodges the top-of-hour crowd.
 const REFRESH_HOURS_UTC = [0, 8, 16];
+const REFRESH_MINUTES_UTC = 47;
+
+// Only these columns go into data/naptan.json. The CSV stays a full
+// byte-for-byte mirror; the JSON is trimmed to what the sites actually use.
+const JSON_COLUMNS = [
+  'ATCOCode',
+  'NaptanCode',
+  'CommonName',
+  'Indicator',
+  'Bearing',
+  'LocalityName',
+  'Easting',
+  'Northing',
+  'Latitude',
+  'Longitude',
+  'StopType',
+  'BusStopType',
+  'AdministrativeAreaCode',
+  'ModificationDateTime',
+  'Status',
+];
 
 // Formats a Date as a friendly UK-time string (handles BST automatically).
 function formatUK(date) {
@@ -53,19 +75,18 @@ function formatUK(date) {
 }
 
 // Next scheduled refresh after `from` (a Date), given the cron's UTC hours.
-// The candidate times are aligned to the top of the hour, so the result
-// matches what the GitHub Actions cron will actually fire at.
+// The result matches what the GitHub Actions cron '47 */8 * * *' will fire at.
 function nextRefresh(from) {
   for (const hour of REFRESH_HOURS_UTC) {
     const candidate = new Date(
-      Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate(), hour)
+      Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate(), hour, REFRESH_MINUTES_UTC)
     );
     if (candidate > from) return candidate;
   }
   const tomorrow = new Date(from);
   tomorrow.setUTCDate(from.getUTCDate() + 1);
   return new Date(
-    Date.UTC(tomorrow.getUTCFullYear(), tomorrow.getUTCMonth(), tomorrow.getUTCDate(), REFRESH_HOURS_UTC[0])
+    Date.UTC(tomorrow.getUTCFullYear(), tomorrow.getUTCMonth(), tomorrow.getUTCDate(), REFRESH_HOURS_UTC[0], REFRESH_MINUTES_UTC)
   );
 }
 
@@ -199,8 +220,15 @@ async function main() {
     `[json] ${records.length} stop records, ${headers.length} source columns`
   );
 
+  // Trim each record to just the columns the sites use.
+  const jsonRecords = records.map((r) => {
+    const out = {};
+    for (const col of JSON_COLUMNS) out[col] = r[col] ?? '';
+    return out;
+  });
+
   const jsonPath = join(DATA_DIR, 'naptan.json');
-  await writeFile(jsonPath, JSON.stringify(records));
+  await writeFile(jsonPath, JSON.stringify(jsonRecords));
   const jsonHash = sha256(await readFile(jsonPath));
 
   const generatedAt = new Date();
@@ -211,7 +239,7 @@ async function main() {
     nextUpdate: nextUpdate.toISOString(),
     source: NAPTAN_URL,
     recordCount: records.length,
-    columns: headers,
+    columns: JSON_COLUMNS,
     csvHash,
     jsonHash,
     formats: {
@@ -244,7 +272,7 @@ async function main() {
   await rm(TMP_CSV, { force: true }).catch(() => {});
 
   console.log(
-    `[done] wrote ${records.length} records -> data/naptan.json, data/naptan.csv, public/meta.json, public/index.html`
+    `[done] wrote ${records.length} records (${JSON_COLUMNS.length} columns) -> data/naptan.json, data/naptan.csv, public/meta.json, public/index.html`
   );
 }
 
