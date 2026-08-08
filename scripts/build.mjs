@@ -257,12 +257,35 @@ async function main() {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Naptan Mirror</title>
 </head>
-<body>
+ <body>
 <h1>Naptan Mirror</h1>
 <p><a href="${RELEASE_BASE}/naptan.json">naptan.json</a> &mdash; full dataset (JSON)</p>
 <p><a href="${RELEASE_BASE}/naptan.csv">naptan.csv</a> &mdash; full dataset (CSV)</p>
 <p><strong>Last refreshed:</strong> ${formatUK(generatedAt)}</p>
 <p><strong>Next update due:</strong> ${formatUK(nextUpdate)}</p>
+<p><button id="refreshBtn">Refresh now</button> <span id="refreshStatus"></span></p>
+<script>
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('refreshBtn');
+  const status = document.getElementById('refreshStatus');
+  btn.disabled = true;
+  status.textContent = 'Requesting\u2026';
+  try {
+    const res = await fetch('/refresh', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok) {
+      status.textContent = 'Refresh started.';
+    } else if (res.status === 429) {
+      status.textContent = 'Already refreshed recently \u2014 try again later.';
+    } else {
+      status.textContent = 'Failed (' + (data.error || res.status) + ').';
+    }
+  } catch {
+    status.textContent = 'Request failed.';
+  }
+  btn.disabled = false;
+});
+</script>
 </body>
 </html>
 `;
