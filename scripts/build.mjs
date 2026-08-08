@@ -18,9 +18,8 @@ import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { finished } from 'node:stream/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', 'public');
@@ -275,8 +274,8 @@ async function main() {
 </head>
  <body>
 <h1>Naptan Mirror</h1>
-<p><a href="${RELEASE_BASE}/naptan.json">naptan.json</a> &mdash; full dataset (JSON)</p>
-<p><a href="${RELEASE_BASE}/naptan.csv">naptan.csv</a> &mdash; full dataset (CSV)</p>
+<p><a href="${RELEASE_BASE}/naptan.json">naptan.json</a> &mdash; dataset (JSON)</p>
+<p><a href="${RELEASE_BASE}/naptan.csv">naptan.csv</a> &mdash; dataset (CSV)</p>
 <p><strong>Last refreshed:</strong> ${formatUK(generatedAt)}</p>
 <p><strong>Next update due:</strong> ${formatUK(nextUpdate)}</p>
 <p><button id="refreshBtn">Refresh now</button> <span id="refreshStatus"></span></p>

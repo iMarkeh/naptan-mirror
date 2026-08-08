@@ -2,13 +2,12 @@ name: Refresh Naptan cache
 
 on:
   schedule:
-    # Every 8 hours UTC (00:00, 08:00, 16:00)
+    # Every 8 hours UTC (00:47, 08:47, 16:47)
     - cron: '47 */8 * * *'
   workflow_dispatch: {}     # manual "Run workflow" button
 
 permissions:
   contents: write
-  deployments: write
 
 concurrency:
   group: naptan-refresh
