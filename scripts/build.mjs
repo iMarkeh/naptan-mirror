@@ -2,15 +2,16 @@
 // Naptan Mirror build script
 //
 // 1. Downloads the full UK NaPTAN dataset (CSV) from the DfT endpoint.
-// 2. Saves the download byte-for-byte as public/naptan.csv.
-// 3. Also parses it into public/naptan.json, using whatever columns the
+// 2. Saves the download byte-for-byte as data/naptan.csv.
+// 3. Also parses it into data/naptan.json, using whatever columns the
 //    file actually has (no fixed column list to maintain).
-// 4. Emits public/meta.json (timestamps, record count, hashes) and
-//    public/index.html (a small status page: links + last refreshed /
-//    next update due).
+// 4. Emits public/meta.json (timestamps, record count, hashes, download
+//    URLs) and public/index.html (a small status page: links + last
+//    refreshed / next update due).
 //
-// No credit card / no paid services required: output is a static dir that is
-// deployed to a Cloudflare Pages project by the GitHub Actions workflow.
+// The big data files live in data/ because Cloudflare Pages caps each file
+// at 25 MiB; the workflow uploads them to a GitHub Release (tag 'data')
+// instead. The small files in public/ are deployed to Cloudflare Pages.
 
 import { createWriteStream } from 'node:fs';
 import { mkdir, writeFile, rm, copyFile, readFile } from 'node:fs/promises';
@@ -23,7 +24,15 @@ import { dirname } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', 'public');
+const DATA_DIR = join(__dirname, '..', 'data');
 const TMP_CSV = join(tmpdir(), `naptan-${Date.now()}.csv`);
+
+// Big files (naptan.csv / naptan.json) exceed Cloudflare Pages' 25 MiB
+// per-file limit, so they are published to a GitHub Release under the fixed
+// tag 'data'. The release base URL is derived from GITHUB_REPOSITORY, which
+// GitHub Actions sets automatically (owner/repo).
+const REPO = process.env.GITHUB_REPOSITORY || 'your-name/naptan-mirror';
+const RELEASE_BASE = `https://github.com/${REPO}/releases/download/data`;
 
 // Configurable source. If DfT changes the URL, set NAPTAN_URL as a
 // workflow/environment variable.
@@ -172,13 +181,14 @@ function sha256(buf) {
 
 async function main() {
   await mkdir(PUBLIC_DIR, { recursive: true });
+  await mkdir(DATA_DIR, { recursive: true });
   await download(NAPTAN_URL, TMP_CSV);
 
-  // The raw download is served as-is (byte-for-byte).
-  const csvPath = join(PUBLIC_DIR, 'naptan.csv');
+  // The raw download is saved as-is (byte-for-byte).
+  const csvPath = join(DATA_DIR, 'naptan.csv');
   await copyFile(TMP_CSV, csvPath);
   const csvHash = sha256(await readFile(csvPath));
-  console.log(`[csv] saved raw download -> naptan.csv (hash=${csvHash})`);
+  console.log(`[csv] saved raw download -> data/naptan.csv (hash=${csvHash})`);
 
   // Parse the same download to produce the JSON version, using the file's
   // own columns so nothing needs maintaining when DfT changes the format.
@@ -189,7 +199,7 @@ async function main() {
     `[json] ${records.length} stop records, ${headers.length} source columns`
   );
 
-  const jsonPath = join(PUBLIC_DIR, 'naptan.json');
+  const jsonPath = join(DATA_DIR, 'naptan.json');
   await writeFile(jsonPath, JSON.stringify(records));
   const jsonHash = sha256(await readFile(jsonPath));
 
@@ -205,8 +215,8 @@ async function main() {
     csvHash,
     jsonHash,
     formats: {
-      json: '/naptan.json',
-      csv: '/naptan.csv',
+      json: `${RELEASE_BASE}/naptan.json`,
+      csv: `${RELEASE_BASE}/naptan.csv`,
     },
   };
   await writeFile(join(PUBLIC_DIR, 'meta.json'), JSON.stringify(meta, null, 2));
@@ -221,8 +231,8 @@ async function main() {
 </head>
 <body>
 <h1>Naptan Mirror</h1>
-<p><a href="naptan.json">naptan.json</a> &mdash; full dataset (JSON)</p>
-<p><a href="naptan.csv">naptan.csv</a> &mdash; full dataset (CSV)</p>
+<p><a href="${RELEASE_BASE}/naptan.json">naptan.json</a> &mdash; full dataset (JSON)</p>
+<p><a href="${RELEASE_BASE}/naptan.csv">naptan.csv</a> &mdash; full dataset (CSV)</p>
 <p><strong>Last refreshed:</strong> ${formatUK(generatedAt)}</p>
 <p><strong>Next update due:</strong> ${formatUK(nextUpdate)}</p>
 </body>
@@ -234,7 +244,7 @@ async function main() {
   await rm(TMP_CSV, { force: true }).catch(() => {});
 
   console.log(
-    `[done] wrote ${records.length} records -> naptan.json, naptan.csv, meta.json, index.html`
+    `[done] wrote ${records.length} records -> data/naptan.json, data/naptan.csv, public/meta.json, public/index.html`
   );
 }
 

@@ -1,19 +1,19 @@
 # Naptan Mirror
 
-Automatically downloads the full UK NaPTAN dataset every 8 hours and stores it on a
-Cloudflare Pages site, so my other projects fetch it from one place instead of each
-hitting the NaPTAN API directly.
+Automatically downloads the full UK NaPTAN dataset every 8 hours and stores it in
+one place, so my other projects fetch it from there instead of each hitting the
+NaPTAN API directly.
 
 ## Where my projects get it from
 
-https://naptan-mirror.pages.dev
+The data files live on a GitHub Release (tag `data`) — these URLs never change:
 
-The site root (`/`) shows a status page with links plus the last refreshed
-time and next update due.
+- https://github.com/<my-name>/naptan-mirror/releases/download/data/naptan.json
+- https://github.com/<my-name>/naptan-mirror/releases/download/data/naptan.csv
 
-- `naptan.json` — full dataset (JSON)
-- `naptan.csv` — full dataset (CSV)
-- `meta.json` — timestamp, record count, and a hash to check if the data changed
+`https://naptan-mirror.pages.dev` shows a status page (links + last refreshed
+time and next update due), plus `https://naptan-mirror.pages.dev/meta.json` gives
+the timestamps, record count and hashes.
 
 ## To refresh it manually
 
