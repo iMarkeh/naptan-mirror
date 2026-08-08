@@ -1,0 +1,8 @@
+{
+  "name": "naptan-mirror",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "proj4": "^2.12.2"
+  }
+}

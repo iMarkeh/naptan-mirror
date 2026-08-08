@@ -21,10 +21,11 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import proj4 from 'proj4';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PUBLIC_DIR = join(__dirname, '..', 'public');
-const DATA_DIR = join(__dirname, '..', 'data');
+const PUBLIC_DIR = join(__dirname, 'public');
+const DATA_DIR = join(__dirname, 'data');
 const TMP_CSV = join(tmpdir(), `naptan-${Date.now()}.csv`);
 
 // Big files (naptan.csv / naptan.json) exceed Cloudflare Pages' 25 MiB
@@ -46,7 +47,9 @@ const REFRESH_HOURS_UTC = [0, 8, 16];
 const REFRESH_MINUTES_UTC = 47;
 
 // Only these columns go into data/naptan.json and data/naptan.csv. The
-// sites don't need the rest, so the published files stay small.
+// sites don't need the rest, so the published files stay small. Easting and
+// Northing are consumed during the build to fill in blank lat/lon and are
+// not stored (see convertEastingNorthingToLatLon).
 const JSON_COLUMNS = [
   'ATCOCode',
   'NaptanCode',
@@ -54,8 +57,6 @@ const JSON_COLUMNS = [
   'Indicator',
   'Bearing',
   'LocalityName',
-  'Easting',
-  'Northing',
   'Latitude',
   'Longitude',
   'StopType',
@@ -64,6 +65,26 @@ const JSON_COLUMNS = [
   'ModificationDateTime',
   'Status',
 ];
+
+// OSGB36 easting/northing -> WGS84 lat/lon via proj4. These projection
+// strings match the coordinate conversion used by the consuming sites, so
+// derived coordinates stay consistent between systems.
+const OSGB36_PROJ =
+  '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +datum=OSGB36 +units=m +no_defs';
+const WGS84_PROJ = '+proj=longlat +datum=WGS84 +no_defs';
+
+// Converts an OSGB36 easting/northing pair to WGS84 lat/lon, or null if the
+// input is not numeric or the conversion throws.
+function convertEastingNorthingToLatLon(easting, northing) {
+  if (isNaN(easting) || isNaN(northing)) return null;
+  try {
+    const converted = proj4(OSGB36_PROJ, WGS84_PROJ, [easting, northing]);
+    return { lat: converted[1], lon: converted[0] };
+  } catch (e) {
+    console.error('Coordinate conversion failed:', e);
+    return null;
+  }
+}
 
 // Formats a Date as a friendly UK-time string (handles BST automatically).
 function formatUK(date) {
@@ -202,6 +223,16 @@ function csvEscape(value) {
   return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
+// Escapes a value for embedding in the generated status page HTML.
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Serialises trimmed records back to CSV with the given column order.
 function toCsv(records, columns) {
   const lines = [columns.map(csvEscape).join(',')];
@@ -235,12 +266,44 @@ async function main() {
     `[json] ${records.length} stop records, ${headers.length} source columns`
   );
 
-  // Trim each record to just the columns the sites use.
+  // Trim each record to just the columns the sites use. Any stop with a
+  // blank Latitude/Longitude is re-derived from its Easting/Northing. Stops
+  // that can't be converted are kept with blank coordinates and reported in
+  // public/meta.json + the status page for investigation.
+  const conversionErrors = [];
   const jsonRecords = records.map((r) => {
     const out = {};
     for (const col of JSON_COLUMNS) out[col] = r[col] ?? '';
+    if (String(out.Latitude).trim() === '' || String(out.Longitude).trim() === '') {
+      const easting = r['Easting'] ?? '';
+      const northing = r['Northing'] ?? '';
+      const converted = convertEastingNorthingToLatLon(easting, northing);
+      if (converted && converted.lat && converted.lon) {
+        out.Latitude = String(converted.lat);
+        out.Longitude = String(converted.lon);
+      } else {
+        let reason;
+        if (String(easting).trim() === '' || String(northing).trim() === '') {
+          reason = 'missing_easting_northing';
+        } else if (isNaN(easting) || isNaN(northing)) {
+          reason = 'invalid_easting_northing';
+        } else {
+          reason = 'conversion_failed';
+        }
+        conversionErrors.push({
+          atcoCode: out.ATCOCode,
+          commonName: out.CommonName,
+          easting,
+          northing,
+          reason,
+        });
+      }
+    }
     return out;
   });
+  console.log(
+    `[coords] ${jsonRecords.length - conversionErrors.length} stops with lat/lon, ${conversionErrors.length} conversion errors`
+  );
 
   const jsonPath = join(DATA_DIR, 'naptan.json');
   await writeFile(jsonPath, JSON.stringify(toMatrix(jsonRecords, JSON_COLUMNS)));
@@ -262,6 +325,7 @@ async function main() {
     source: NAPTAN_URL,
     recordCount: records.length,
     columns: JSON_COLUMNS,
+    conversionErrors,
     csvHash,
     jsonHash,
     formats: {
@@ -271,6 +335,22 @@ async function main() {
   };
   await writeFile(join(PUBLIC_DIR, 'meta.json'), JSON.stringify(meta, null, 2));
 
+  // Render the conversion-errors section for the status page (hidden when
+  // the run was clean). Full list, no cap, so every problem stop is visible.
+  const errorsHtml = conversionErrors.length
+    ? `<h2>Conversion errors (${conversionErrors.length})</h2>
+<table>
+<thead><tr><th>ATCOCode</th><th>CommonName</th><th>Easting</th><th>Northing</th><th>Reason</th></tr></thead>
+<tbody>
+${conversionErrors
+  .map(
+    (e) => `<tr><td>${escapeHtml(e.atcoCode)}</td><td>${escapeHtml(e.commonName)}</td><td>${escapeHtml(e.easting)}</td><td>${escapeHtml(e.northing)}</td><td>${escapeHtml(e.reason)}</td></tr>`
+  )
+  .join('\n')}
+</tbody>
+</table>`
+    : '';
+
   // Emit the status page. Cloudflare Pages serves index.html at the site root.
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -278,6 +358,11 @@ async function main() {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Naptan Mirror</title>
+<style>
+table { border-collapse: collapse; margin: 1em 0; }
+th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+th { background: #eee; }
+</style>
 </head>
  <body>
 <h1>Naptan Mirror</h1>
@@ -285,6 +370,7 @@ async function main() {
 <p><a href="${RELEASE_BASE}/naptan.csv">naptan.csv</a> &mdash; dataset (CSV)</p>
 <p><strong>Last refreshed:</strong> ${formatUK(generatedAt)}</p>
 <p><strong>Next update due:</strong> ${formatUK(nextUpdate)}</p>
+${errorsHtml}
 <p><button id="refreshBtn">Refresh now</button> <span id="refreshStatus"></span></p>
 <script>
 document.getElementById('refreshBtn').addEventListener('click', async () => {

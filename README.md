@@ -6,5 +6,6 @@ Private project. No support provided. Just public so things work.
 
 - Refreshes automatically every 8 hours.
 - Each refresh commits a small update to the repo, which keeps it active.
-- The JSON and CSV both only contain the columns which are used in the sites. See build.mjs for details on saved columns.
+- The JSON and CSV both only contain the columns which are used in the sites. See build.mjs for details on saved columns. Easting/Northing are consumed during the build to fill in any blank lat/lon and are not stored.
 - `naptan.json` is a matrix: row 0 is the header, each following row is one stop in that same column order. `meta.json.columns` lists the header.
+- If any stops can't be converted from easting/northing, `meta.json.conversionErrors` lists them (ATCOCode, CommonName, reason) and they're shown on the status page.

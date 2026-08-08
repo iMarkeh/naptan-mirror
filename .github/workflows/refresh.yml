@@ -26,10 +26,13 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Install dependencies
+        run: npm install --omit=dev
+
       - name: Download & transform NaPTAN
         env:
           NAPTAN_URL: ${{ vars.NAPTAN_URL }}
-        run: node scripts/build.mjs
+        run: node build.mjs
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v4
