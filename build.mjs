@@ -41,11 +41,6 @@ const NAPTAN_URL =
   process.env.NAPTAN_URL ||
   'https://naptan.api.dft.gov.uk/v1/access-nodes?dataFormat=csv';
 
-// Refresh schedule in UTC, matching the workflow cron '47 */8 * * *'
-// (00:47, 08:47, 16:47). The :47 offset dodges the top-of-hour crowd.
-const REFRESH_HOURS_UTC = [0, 8, 16];
-const REFRESH_MINUTES_UTC = 47;
-
 // Only these columns go into data/naptan.json and data/naptan.csv. The
 // sites don't need the rest, so the published files stay small. Easting and
 // Northing are consumed during the build to fill in blank lat/lon and are
@@ -121,22 +116,6 @@ function formatUK(date) {
     dateStyle: 'full',
     timeStyle: 'short',
   }).format(date);
-}
-
-// Next scheduled refresh after `from` (a Date), given the cron's UTC hours.
-// The result matches what the GitHub Actions cron '47 */8 * * *' will fire at.
-function nextRefresh(from) {
-  for (const hour of REFRESH_HOURS_UTC) {
-    const candidate = new Date(
-      Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate(), hour, REFRESH_MINUTES_UTC)
-    );
-    if (candidate > from) return candidate;
-  }
-  const tomorrow = new Date(from);
-  tomorrow.setUTCDate(from.getUTCDate() + 1);
-  return new Date(
-    Date.UTC(tomorrow.getUTCFullYear(), tomorrow.getUTCMonth(), tomorrow.getUTCDate(), REFRESH_HOURS_UTC[0], REFRESH_MINUTES_UTC)
-  );
 }
 
 async function download(url, dest) {
@@ -348,11 +327,9 @@ async function main() {
   console.log(`[csv] saved trimmed data -> data/naptan.csv (hash=${csvHash})`);
 
   const generatedAt = new Date();
-  const nextUpdate = nextRefresh(generatedAt);
 
   const meta = {
     generatedAt: generatedAt.toISOString(),
-    nextUpdate: nextUpdate.toISOString(),
     source: NAPTAN_URL,
     recordCount: records.length,
     columns: JSON_COLUMNS,
@@ -400,7 +377,7 @@ th { background: #eee; }
 <p><a href="${RELEASE_BASE}/naptan.json">naptan.json</a> &mdash; dataset (JSON)</p>
 <p><a href="${RELEASE_BASE}/naptan.csv">naptan.csv</a> &mdash; dataset (CSV)</p>
 <p><strong>Last refreshed:</strong> ${formatUK(generatedAt)}</p>
-<p><strong>Next update due:</strong> ${formatUK(nextUpdate)}</p>
+<p>Stop data updates around 1am, 9am &amp; 5pm</p>
 ${errorsHtml}
 <p><button id="refreshBtn">Refresh now</button> <span id="refreshStatus"></span></p>
 <script>
