@@ -62,6 +62,7 @@ export async function onRequestPost({ env }) {
         Accept: 'application/vnd.github+json',
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'User-Agent': 'naptan-mirror-trigger',
         'X-GitHub-Api-Version': '2022-11-28',
       },
       body: JSON.stringify({ ref: REF }),

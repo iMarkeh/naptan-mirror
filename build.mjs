@@ -417,7 +417,7 @@ document.getElementById('refreshBtn').addEventListener('click', async () => {
     } else if (res.status === 429) {
       status.textContent = 'Already refreshed recently \u2014 try again later.';
     } else {
-      status.textContent = 'Failed (' + (data.error || res.status) + ').';
+      status.textContent = 'Failed (' + (data.error || res.status) + '): ' + (data.detail || '');
     }
   } catch {
     status.textContent = 'Request failed.';
