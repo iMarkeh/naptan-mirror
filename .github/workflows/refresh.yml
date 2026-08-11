@@ -32,6 +32,7 @@ jobs:
       - name: Download & transform NaPTAN
         env:
           NAPTAN_URL: ${{ vars.NAPTAN_URL }}
+          RRL_URL: ${{ vars.RRL_URL }}
         run: node build.mjs
 
       - name: Deploy to Cloudflare Pages
@@ -52,8 +53,12 @@ jobs:
               --notes "Auto-refreshed every 8 hours. Files replaced in place." \
               --latest=false
           fi
-          # Replace the files in that release, keeping the URLs stable.
+          # Replace the files in that release, keeping the URLs stable. The
+          # RRL file is only present when the build actually changed it.
           gh release upload data data/naptan.csv data/naptan.json --clobber
+          if [ -f data/rrl.csv ]; then
+            gh release upload data data/rrl.csv --clobber
+          fi
 
       - name: Commit refreshed data
         run: |

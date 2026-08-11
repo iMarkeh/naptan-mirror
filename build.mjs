@@ -6,7 +6,10 @@
 //    columns listed in JSON_COLUMNS (the ones the sites actually use).
 // 3. Also parses it into data/naptan.json with the same columns, as a
 //    matrix (row 0 is the header, each following row is one record).
-// 4. Emits public/meta.json (timestamps, record count, hashes, download
+// 4. Also fetches the Rail Replacement Location dataset (CSV) and trims it
+//    to data/rrl.csv, but only checks the RRL API about once a day and only
+//    re-downloads when the source actually changed (see fetchRrl).
+// 5. Emits public/meta.json (timestamps, record count, hashes, download
 //    URLs) and public/index.html (a small status page: links + last
 //    refreshed / next update due).
 //
@@ -60,6 +63,35 @@ const JSON_COLUMNS = [
   'ModificationDateTime',
   'Status',
 ];
+
+// Rail Replacement Location dataset. Fetched via the DfT RRL API, which
+// returns a time-limited signed URL (60 min) to the current CSV. Unlike
+// NaPTAN this is only checked about once a day (see RRL_CHECK_INTERVAL_MS)
+// and only actually downloaded when the source object changes, since DfT
+// rarely updates it.
+const RRL_URL =
+  process.env.RRL_URL ||
+  'https://rrl.api.dft.gov.uk/v1/rail-replacement/stops/download?format=csv';
+
+// Only these columns go into data/rrl.csv. The sites don't need the rest
+// (easting/northing and the Welsh variants are deliberately dropped).
+const RRL_COLUMNS = [
+  'AtcoCode',
+  'CommonName_EN',
+  'Street_EN',
+  'Longitude',
+  'Latitude',
+  'StopType',
+  'Description_EN',
+  'CreationDateTime',
+  'ModificationDateTime',
+  'CrsRef',
+  'SFOCode',
+  'MarkedStopAtcoCode',
+];
+
+// Only hit the RRL API (and the signed download object) at most this often.
+const RRL_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 // OSGB36 easting/northing -> WGS84 lat/lon via proj4. These projection
 // strings match the coordinate conversion used by the consuming sites, so
@@ -259,9 +291,117 @@ function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex').slice(0, 16);
 }
 
+// Fetches the Rail Replacement Location dataset. Gated to at most one check
+// per RRL_CHECK_INTERVAL_MS, and re-downloads only when the source object
+// actually changed. Returns the rrl metadata object to persist, or null when
+// the check was skipped or produced no change.
+//
+// Change detection: the signed URL points at a Google Cloud Storage object.
+// GCS increments x-goog-generation and bumps Last-Modified on every write,
+// so an unchanged generation/etag is a provable no-change signal - no
+// download needed. If the metadata ever disagrees but the downloaded content
+// hashes to the same value, the existing file is kept.
+async function fetchRrl(stored) {
+  const prev = stored && typeof stored === 'object' ? stored : {};
+  const lastChecked = prev.checkedAt ? Date.parse(prev.checkedAt) : NaN;
+  if (Number.isFinite(lastChecked) && Date.now() - lastChecked < RRL_CHECK_INTERVAL_MS) {
+    console.log('[rrl] last checked < 24h ago, skipping');
+    return null;
+  }
+
+  console.log(`[rrl] GET ${RRL_URL}`);
+  const res = await fetch(RRL_URL, { redirect: 'follow' });
+  if (!res.ok) {
+    throw new Error(`RRL API failed: HTTP ${res.status} ${res.statusText}`);
+  }
+  const { downloadUrl, filename } = await res.json();
+  if (!downloadUrl) {
+    throw new Error('RRL API returned no downloadUrl');
+  }
+  console.log(`[rrl] got signed URL for ${filename ?? 'rrl.csv'}`);
+
+  // Lightweight HEAD to learn whether the GCS object changed since we last
+  // looked, without pulling the whole file.
+  let generation = '';
+  let etag = '';
+  let lastModified = '';
+  let headStatus = 0;
+  try {
+    const head = await fetch(downloadUrl, { method: 'HEAD', redirect: 'follow' });
+    headStatus = head.status;
+    generation = head.headers.get('x-goog-generation') ?? '';
+    etag = head.headers.get('etag') ?? '';
+    lastModified = head.headers.get('last-modified') ?? '';
+  } catch (err) {
+    console.warn(`[rrl] HEAD failed: ${err?.message ?? err}`);
+  }
+  console.log(
+    `[rrl] HEAD status=${headStatus} generation=${generation || 'n/a'} etag=${etag || 'n/a'} last-modified=${lastModified || 'n/a'}`
+  );
+
+  const base = {
+    checkedAt: new Date().toISOString(),
+    generation,
+    etag,
+    datasetUpdatedAt: lastModified
+      ? new Date(lastModified).toISOString()
+      : new Date().toISOString(),
+  };
+
+  if (prev.generation && generation && prev.generation === generation && prev.etag === etag) {
+    console.log('[rrl] dataset unchanged since last check, skipping download');
+    return { ...prev, ...base, status: 'unchanged' };
+  }
+
+  // Changed (or first seen): download and compare the content hash. If the
+  // bytes are identical we keep the existing file even if the GCS metadata
+  // moved, so the published CSV only ever changes when the data does.
+  const rrlCsvPath = join(DATA_DIR, 'rrl.csv');
+  const tmpRrl = join(tmpdir(), `rrl-${Date.now()}.csv`);
+  await download(downloadUrl, tmpRrl);
+  const text = await readFile(tmpRrl, 'utf8');
+  const { records } = parseCsv(text);
+  const rows = records.map((r) => {
+    const out = {};
+    for (const col of RRL_COLUMNS) out[col] = r[col] ?? '';
+    return out;
+  });
+  console.log(`[rrl] ${rows.length} stop records, kept ${RRL_COLUMNS.length} columns`);
+  const csv = toCsv(rows, RRL_COLUMNS);
+  const csvHash = sha256(Buffer.from(csv, 'utf8'));
+  await rm(tmpRrl, { force: true }).catch(() => {});
+
+  if (prev.csvHash && prev.csvHash === csvHash) {
+    console.log('[rrl] content unchanged despite metadata change, keeping existing file');
+    return { ...prev, ...base, status: 'unchanged' };
+  }
+
+  await writeFile(rrlCsvPath, csv);
+  console.log(`[rrl] saved ${rows.length} records -> data/rrl.csv (hash=${csvHash})`);
+  return {
+    ...base,
+    recordCount: rows.length,
+    columns: RRL_COLUMNS,
+    csvHash,
+    csvUrl: `${RELEASE_BASE}/rrl.csv`,
+    source: RRL_URL,
+    status: 'updated',
+  };
+}
+
 async function main() {
   await mkdir(PUBLIC_DIR, { recursive: true });
   await mkdir(DATA_DIR, { recursive: true });
+
+  // Previous build's metadata (for RRL change detection and the stale-if-
+  // error fallback). Missing/corrupt on first build is fine.
+  let prevMeta = {};
+  try {
+    prevMeta = JSON.parse(await readFile(join(PUBLIC_DIR, 'meta.json'), 'utf8'));
+  } catch {
+    // First build (or corrupt meta) - start fresh.
+  }
+
   await download(NAPTAN_URL, TMP_CSV);
 
   // Parse the download, using the file's own columns so nothing needs
@@ -326,6 +466,20 @@ async function main() {
   const csvHash = sha256(await readFile(csvPath));
   console.log(`[csv] saved trimmed data -> data/naptan.csv (hash=${csvHash})`);
 
+  // Rail Replacement dataset: ~1/day check, re-download only when the source
+  // object actually changes (generation/etag, with a content-hash safety
+  // net). Failures never break the NaPTAN build - stale RRL data is kept.
+  let rrl = {};
+  let rrlChecked = false;
+  try {
+    const fetched = await fetchRrl(prevMeta.rrl);
+    rrlChecked = fetched !== null;
+    rrl = fetched ?? (prevMeta.rrl ?? {});
+  } catch (err) {
+    console.error(`[rrl] failed: ${err?.message ?? err}`);
+    rrl = { ...(prevMeta.rrl ?? {}), status: 'error', error: String(err?.message ?? err) };
+  }
+
   const generatedAt = new Date();
 
   const meta = {
@@ -336,6 +490,7 @@ async function main() {
     conversionErrors,
     csvHash,
     jsonHash,
+    rrl,
     formats: {
       json: `${RELEASE_BASE}/naptan.json`,
       csv: `${RELEASE_BASE}/naptan.csv`,
@@ -359,6 +514,17 @@ ${conversionErrors
 </table>`
     : '';
 
+  // Rail Replacement section for the status page. Falls back to the last
+  // known dataset timestamp if this run's check failed.
+  const rrlCsvUrl = rrl.csvUrl || `${RELEASE_BASE}/rrl.csv`;
+  const rrlLastUpdated = rrl.datasetUpdatedAt
+    ? formatUK(new Date(rrl.datasetUpdatedAt))
+    : 'Unknown';
+  const rrlCheckedAt = rrl.checkedAt
+    ? formatUK(new Date(rrl.checkedAt))
+    : 'Unknown';
+  const rrlNote = rrl.status === 'error' ? ' (check failed)' : '';
+
   // Emit the status page. Cloudflare Pages serves index.html at the site root.
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -380,6 +546,10 @@ th { background: #eee; }
 <p>Stop data updates around 1am, 9am &amp; 5pm</p>
 ${errorsHtml}
 <p><button id="refreshBtn">Refresh now</button> <span id="refreshStatus"></span></p>
+<p><strong>Rail replacement stop data</strong></p>
+<p><a href="${rrlCsvUrl}">rrl.csv</a> &mdash; dataset (CSV)</p>
+<p>Last updated: ${rrlLastUpdated}</p>
+<p>Last checked: ${rrlCheckedAt}${rrlNote}</p>
 <script>
 document.getElementById('refreshBtn').addEventListener('click', async () => {
   const btn = document.getElementById('refreshBtn');
@@ -413,6 +583,7 @@ document.getElementById('refreshBtn').addEventListener('click', async () => {
   console.log(
     `[done] wrote ${records.length} records (${JSON_COLUMNS.length} columns) -> data/naptan.json, data/naptan.csv, public/meta.json, public/index.html`
   );
+  console.log(`[done] rrl ${rrlChecked ? 'checked' : 'gated/skipped'}: status=${rrl.status ?? 'n/a'}`);
 }
 
 main().catch((err) => {
