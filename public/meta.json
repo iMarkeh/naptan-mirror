@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-11T17:40:48.554Z",
+  "generatedAt": "2026-08-12T03:10:51.709Z",
   "source": "https://naptan.api.dft.gov.uk/v1/access-nodes?dataFormat=csv",
   "recordCount": 435298,
   "columns": [
@@ -20,6 +20,31 @@
   "conversionErrors": [],
   "csvHash": "08ddc6282455eeec",
   "jsonHash": "5ddcf5be08a020e6",
+  "rrl": {
+    "checkedAt": "2026-08-12T03:10:50.995Z",
+    "generation": "1785317105801640",
+    "etag": "\"3bca68e474eccb54f590d54102e5ab8e\"",
+    "datasetUpdatedAt": "2026-07-29T09:25:05.000Z",
+    "recordCount": 3496,
+    "columns": [
+      "AtcoCode",
+      "CommonName_EN",
+      "Street_EN",
+      "Longitude",
+      "Latitude",
+      "StopType",
+      "Description_EN",
+      "CreationDateTime",
+      "ModificationDateTime",
+      "CrsRef",
+      "SFOCode",
+      "MarkedStopAtcoCode"
+    ],
+    "csvHash": "c1d1f3f6887a93fc",
+    "csvUrl": "https://github.com/iMarkeh/naptan-mirror/releases/download/data/rrl.csv",
+    "source": "https://rrl.api.dft.gov.uk/v1/rail-replacement/stops/download?format=csv",
+    "status": "updated"
+  },
   "formats": {
     "json": "https://github.com/iMarkeh/naptan-mirror/releases/download/data/naptan.json",
     "csv": "https://github.com/iMarkeh/naptan-mirror/releases/download/data/naptan.csv"
