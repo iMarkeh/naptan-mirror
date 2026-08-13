@@ -38,16 +38,13 @@ const TMP_CSV = join(tmpdir(), `naptan-${Date.now()}.csv`);
 const REPO = process.env.GITHUB_REPOSITORY || 'your-name/naptan-mirror';
 const RELEASE_BASE = `https://github.com/${REPO}/releases/download/data`;
 
-// Configurable source. If DfT changes the URL, set NAPTAN_URL as a
-// workflow/environment variable.
+// Source URL; override via NAPTAN_URL env var if DfT moves it.
 const NAPTAN_URL =
   process.env.NAPTAN_URL ||
   'https://naptan.api.dft.gov.uk/v1/access-nodes?dataFormat=csv';
 
-// Only these columns go into data/naptan.json and data/naptan.csv. The
-// sites don't need the rest, so the published files stay small. Easting and
-// Northing are consumed during the build to fill in blank lat/lon and are
-// not stored (see convertEastingNorthingToLatLon).
+// Columns kept in naptan.json/csv (the only ones the sites use). Easting/Northing
+// are converted on this site to fill in blank lat/lon, then dropped from the save.
 const JSON_COLUMNS = [
   'ATCOCode',
   'NaptanCode',
@@ -64,17 +61,13 @@ const JSON_COLUMNS = [
   'Status',
 ];
 
-// Rail Replacement Location dataset. Fetched via the DfT RRL API, which
-// returns a time-limited signed URL (60 min) to the current CSV. Unlike
-// NaPTAN this is only checked about once a day (see RRL_CHECK_INTERVAL_MS)
-// and only actually downloaded when the source object changes, since DfT
-// rarely updates it.
+// RailRep dataset (its API returns a 60-min signed URL). Checked
+// ~once a day; downloaded only when the source changes (see fetchRrl).
 const RRL_URL =
   process.env.RRL_URL ||
   'https://rrl.api.dft.gov.uk/v1/rail-replacement/stops/download?format=csv';
 
-// Only these columns go into data/rrl.csv. The sites don't need the rest
-// (easting/northing and the Welsh variants are deliberately dropped).
+// Columns kept in rrl.csv (Welsh variants + easting/northing omitted).
 const RRL_COLUMNS = [
   'AtcoCode',
   'CommonName_EN',
@@ -90,12 +83,10 @@ const RRL_COLUMNS = [
   'MarkedStopAtcoCode',
 ];
 
-// Only hit the RRL API (and the signed download object) at most this often.
+// How often we poll the RailRep data API for changes.
 const RRL_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-// OSGB36 easting/northing -> WGS84 lat/lon via proj4. These projection
-// strings match the coordinate conversion used by the consuming sites, so
-// derived coordinates stay consistent between systems.
+// OSGB36 -> WGS84 projections, matching the consuming sites' conversion.
 const OSGB36_PROJ =
   '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +datum=OSGB36 +units=m +no_defs';
 const WGS84_PROJ = '+proj=longlat +datum=WGS84 +no_defs';
@@ -116,9 +107,7 @@ function convertEastingNorthingToLatLon(easting, northing) {
   }
 }
 
-// Self-test the conversion against a known OSGB36 -> WGS84 reference point
-// (OSGB 531691,182089 ~= lat 51.52237, lon -0.10322). Guards against silent
-// coordinate regressions, e.g. proj4 quietly skipping the datum shift.
+// Sanity check the OSGB36 -> WGS84 conversion against a known reference point.
 const REF_EASTING = 531691;
 const REF_NORTHING = 182089;
 const REF_LAT = 51.52237;
@@ -320,8 +309,7 @@ async function fetchRrl(stored) {
   }
   console.log(`[rrl] got signed URL for ${filename ?? 'rrl.csv'}`);
 
-  // Lightweight HEAD to learn whether the GCS object changed since we last
-  // looked, without pulling the whole file.
+  // HEAD the object to see if it changed, without downloading it.
   let generation = '';
   let etag = '';
   let lastModified = '';
@@ -393,8 +381,7 @@ async function main() {
   await mkdir(PUBLIC_DIR, { recursive: true });
   await mkdir(DATA_DIR, { recursive: true });
 
-  // Previous build's metadata (for RRL change detection and the stale-if-
-  // error fallback). Missing/corrupt on first build is fine.
+  // Previous builds metadata for RailRep. Change detection + error fallback.
   let prevMeta = {};
   try {
     prevMeta = JSON.parse(await readFile(join(PUBLIC_DIR, 'meta.json'), 'utf8'));
@@ -466,9 +453,7 @@ async function main() {
   const csvHash = sha256(await readFile(csvPath));
   console.log(`[csv] saved trimmed data -> data/naptan.csv (hash=${csvHash})`);
 
-  // Rail Replacement dataset: ~1/day check, re-download only when the source
-  // object actually changes (generation/etag, with a content-hash safety
-  // net). Failures never break the NaPTAN build - stale RRL data is kept.
+  // RailRep data checks ~1/day check. Re-download only on real changes, else keeps old data.
   let rrl = {};
   let rrlChecked = false;
   try {
@@ -498,8 +483,7 @@ async function main() {
   };
   await writeFile(join(PUBLIC_DIR, 'meta.json'), JSON.stringify(meta, null, 2));
 
-  // Render the conversion-errors section for the status page (hidden when
-  // the run was clean). Full list, no cap, so every problem stop is visible.
+  // Conversion errors table for the status page (omitted when clean).
   const errorsHtml = conversionErrors.length
     ? `<h2>Conversion errors (${conversionErrors.length})</h2>
 <table>
@@ -514,8 +498,7 @@ ${conversionErrors
 </table>`
     : '';
 
-  // Rail Replacement section for the status page. Falls back to the last
-  // known dataset timestamp if this run's check failed.
+  // Rail Rep section on status page. Falls back to last known dataset timestamps if error.
   const rrlCsvUrl = rrl.csvUrl || `${RELEASE_BASE}/rrl.csv`;
   const rrlLastUpdated = rrl.datasetUpdatedAt
     ? formatUK(new Date(rrl.datasetUpdatedAt))
