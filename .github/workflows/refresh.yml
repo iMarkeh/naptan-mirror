@@ -55,7 +55,7 @@ jobs:
           fi
           # Replace the files in that release, keeping the URLs stable. The
           # RRL file is only present when the build actually changed it.
-          gh release upload data data/naptan.csv data/naptan.json --clobber
+          gh release upload data data/naptan.csv data/naptan.csv.gz data/naptan.json --clobber
           if [ -f data/rrl.csv ]; then
             gh release upload data data/rrl.csv --clobber
           fi

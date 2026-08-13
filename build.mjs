@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import proj4 from 'proj4';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -430,9 +431,18 @@ async function main() {
 
   // The CSV is trimmed to the same columns as the JSON (not a byte-for-byte mirror of the source download).
   const csvPath = join(DATA_DIR, 'naptan.csv');
-  await writeFile(csvPath, toCsv(jsonRecords, JSON_COLUMNS));
-  const csvHash = sha256(await readFile(csvPath));
+  const csvBuf = Buffer.from(toCsv(jsonRecords, JSON_COLUMNS), 'utf8');
+  await writeFile(csvPath, csvBuf);
+  const csvHash = sha256(csvBuf);
   console.log(`[csv] saved trimmed data -> data/naptan.csv (hash=${csvHash})`);
+
+  // Gzip variant of the CSV, published alongside the raw file so existing
+  // consumers are unaffected. Opt-in URL: .../naptan.csv.gz.
+  const csvGzPath = join(DATA_DIR, 'naptan.csv.gz');
+  const csvGzBuf = gzipSync(csvBuf, { level: 9 });
+  await writeFile(csvGzPath, csvGzBuf);
+  const csvGzHash = sha256(csvGzBuf);
+  console.log(`[csv] gzipped -> data/naptan.csv.gz (hash=${csvGzHash}, ${csvGzBuf.length} bytes)`);
 
   // RailRep data checks ~1/day check. Re-download only on real changes, else keeps old data.
   let rrl = {};
@@ -455,11 +465,14 @@ async function main() {
     columns: JSON_COLUMNS,
     conversionErrors,
     csvHash,
+    csvGzHash,
+    csvGzSize: csvGzBuf.length,
     jsonHash,
     rrl,
     formats: {
       json: `${RELEASE_BASE}/naptan.json`,
       csv: `${RELEASE_BASE}/naptan.csv`,
+      csvGz: `${RELEASE_BASE}/naptan.csv.gz`,
     },
   };
   await writeFile(join(PUBLIC_DIR, 'meta.json'), JSON.stringify(meta, null, 2));
@@ -506,6 +519,7 @@ th { background: #eee; }
 <h1>Naptan Mirror</h1>
 <p><a href="${RELEASE_BASE}/naptan.json">naptan.json</a> &mdash; dataset (JSON)</p>
 <p><a href="${RELEASE_BASE}/naptan.csv">naptan.csv</a> &mdash; dataset (CSV)</p>
+<p><a href="${RELEASE_BASE}/naptan.csv.gz">naptan.csv.gz</a> &mdash; dataset (CSV, gzipped)</p>
 <p><strong>Last refreshed:</strong> ${formatUK(generatedAt)}</p>
 <p>Stop data updates around 1am, 9am &amp; 5pm</p>
 ${errorsHtml}
