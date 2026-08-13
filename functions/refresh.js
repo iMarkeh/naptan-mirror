@@ -1,16 +1,13 @@
 // Trigger endpoint for the Naptan Mirror.
 //
-// A button on the status page and the other sites both POST to
-// /refresh. This function asks GitHub to run the refresh workflow
-// (workflow_dispatch). It refuses to fire twice within MIN_GAP_MS so a
-// spammy click (or two sites racing) can't queue back-to-back runs.
+// A button on the status page and the other sites both POST to refresh. 
+// This function asks GitHub to run the refresh workflow (workflow_dispatch). It refuses to fire twice within MIN_GAP_MS to save spam/overload.
 //
 // Secrets live in Cloudflare, never in this file:
 //   MIRROR_REPO       e.g. yourusername/naptan-mirror
 //   GH_TRIGGER_TOKEN  fine-grained PAT with "Actions: Read and write"
 //
-// GitHub's "workflow_dispatch" only triggers workflows on the default
-// branch, so ref is pinned to main here.
+// GitHub's "workflow_dispatch" only triggers workflows on the default branch, so ref is pinned to main here.
 
 const META_URL = 'https://naptan-mirror.pages.dev/meta.json';
 const WORKFLOW = 'refresh.yml';

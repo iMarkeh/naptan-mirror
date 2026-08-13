@@ -2,20 +2,12 @@
 // Naptan Mirror build script
 //
 // 1. Downloads the full UK NaPTAN dataset (CSV) from the DfT endpoint.
-// 2. Saves a trimmed copy of it as data/naptan.csv, keeping only the
-//    columns listed in JSON_COLUMNS (the ones the sites actually use).
-// 3. Also parses it into data/naptan.json with the same columns, as a
-//    matrix (row 0 is the header, each following row is one record).
-// 4. Also fetches the Rail Replacement Location dataset (CSV) and trims it
-//    to data/rrl.csv, but only checks the RRL API about once a day and only
-//    re-downloads when the source actually changed (see fetchRrl).
-// 5. Emits public/meta.json (timestamps, record count, hashes, download
-//    URLs) and public/index.html (a small status page: links + last
-//    refreshed / next update due).
+// 2. Saves a trimmed copy of it as data/naptan.csv, keeping only the columns listed in JSON_COLUMNS (the ones the sites actually use).
+// 3. Also parses it into data/naptan.json with the same columns, as a matrix (row 0 is the header, each following row is one record).
+// 4. Also fetches the Rail Replacement Location dataset (CSV) and trims it to data/rrl.csv (only checks the RRL API about once a day and only redownloads if changed)
+// 5. Emits public/meta.json (timestamps, record count, hashes, download URLs) and public/index.html (a small status page: links + last refreshed / next update due).
 //
-// The big data files live in data/ because Cloudflare Pages caps each file
-// at 25 MiB; the workflow uploads them to a GitHub Release (tag 'data')
-// instead. The small files in public/ are deployed to Cloudflare Pages.
+// The big data files live in data/ because due to Cloudflare limitations. The small files in public/ are deployed to Cloudflare Pages.
 
 import { createWriteStream } from 'node:fs';
 import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
@@ -31,10 +23,8 @@ const PUBLIC_DIR = join(__dirname, 'public');
 const DATA_DIR = join(__dirname, 'data');
 const TMP_CSV = join(tmpdir(), `naptan-${Date.now()}.csv`);
 
-// Big files (naptan.csv / naptan.json) exceed Cloudflare Pages' 25 MiB
-// per-file limit, so they are published to a GitHub Release under the fixed
-// tag 'data'. The release base URL is derived from GITHUB_REPOSITORY, which
-// GitHub Actions sets automatically (owner/repo).
+// Big files (naptan.csv / naptan.json) are published to a GitHub Release under the fixed tag 'data'.
+// The release base URL is derived from GITHUB_REPOSITORY, which GitHub Actions sets automatically (owner/repo).
 const REPO = process.env.GITHUB_REPOSITORY || 'your-name/naptan-mirror';
 const RELEASE_BASE = `https://github.com/${REPO}/releases/download/data`;
 
@@ -61,8 +51,7 @@ const JSON_COLUMNS = [
   'Status',
 ];
 
-// RailRep dataset (its API returns a 60-min signed URL). Checked
-// ~once a day; downloaded only when the source changes (see fetchRrl).
+// RailRep dataset (its API returns a 60-min signed URL). Checked ~once a day; downloaded only when the source changes (see fetchRrl).
 const RRL_URL =
   process.env.RRL_URL ||
   'https://rrl.api.dft.gov.uk/v1/rail-replacement/stops/download?format=csv';
@@ -83,16 +72,14 @@ const RRL_COLUMNS = [
   'MarkedStopAtcoCode',
 ];
 
-// How often we poll the RailRep data API for changes.
-const RRL_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const RRL_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // How often we poll the RailRep data API for changes.
 
 // OSGB36 -> WGS84 projections, matching the consuming sites' conversion.
 const OSGB36_PROJ =
   '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +datum=OSGB36 +units=m +no_defs';
 const WGS84_PROJ = '+proj=longlat +datum=WGS84 +no_defs';
 
-// Converts an OSGB36 easting/northing pair to WGS84 lat/lon. Returns
-// { lat, lon } on success, or { error } with a reason/message on failure.
+// Converts an OSGB36 easting/northing pair to WGS84 lat/lon. Returns { lat, lon } on success, or { error } with a reason/message on failure.
 function convertEastingNorthingToLatLon(easting, northing) {
   const e = Number(easting);
   const n = Number(northing);
@@ -167,9 +154,8 @@ async function download(url, dest) {
   console.log(`\n[download] wrote ${received} bytes to ${dest}`);
 }
 
-// Minimal CSV parser that handles quoted fields, embedded commas, and
-// embedded newlines. Returns { headers, records } where records are objects
-// keyed by the column names taken from the file's own header row.
+// Minimal CSV parser that handles quoted fields, embedded commas, and embedded newlines. 
+// Returns { headers, records } where records are objects keyed by the column names taken from the file's own header row.
 function parseCsv(text) {
   const rows = [];
   let field = '';
@@ -280,16 +266,13 @@ function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex').slice(0, 16);
 }
 
-// Fetches the Rail Replacement Location dataset. Gated to at most one check
-// per RRL_CHECK_INTERVAL_MS, and re-downloads only when the source object
-// actually changed. Returns the rrl metadata object to persist, or null when
-// the check was skipped or produced no change.
+// Fetches the Rail Replacement Location dataset. Gated to at most one check per RRL_CHECK_INTERVAL_MS, and re-downloads only when the source object actually changed. 
+// Returns the rrl metadata object to persist, or null when the check was skipped or produced no change.
 //
 // Change detection: the signed URL points at a Google Cloud Storage object.
 // GCS increments x-goog-generation and bumps Last-Modified on every write,
-// so an unchanged generation/etag is a provable no-change signal - no
-// download needed. If the metadata ever disagrees but the downloaded content
-// hashes to the same value, the existing file is kept.
+// so an unchanged generation/etag is a provable no-change signal - no download needed. 
+// If the metadata ever disagrees but the downloaded content hashes to the same value, the existing file is kept.
 async function fetchRrl(stored) {
   const prev = stored && typeof stored === 'object' ? stored : {};
   const lastChecked = prev.checkedAt ? Date.parse(prev.checkedAt) : NaN;
@@ -391,8 +374,7 @@ async function main() {
 
   await download(NAPTAN_URL, TMP_CSV);
 
-  // Parse the download, using the file's own columns so nothing needs
-  // maintaining when DfT changes the format.
+  // Parse the download, using the file's own columns so nothing needs maintaining when DfT changes the format.
   const text = await readFile(TMP_CSV, 'utf8');
   console.log('[json] parsing CSV...');
   const { headers, records } = parseCsv(text);
@@ -446,8 +428,7 @@ async function main() {
   await writeFile(jsonPath, JSON.stringify(toMatrix(jsonRecords, JSON_COLUMNS)));
   const jsonHash = sha256(await readFile(jsonPath));
 
-  // The CSV is trimmed to the same columns as the JSON (not a byte-for-byte
-  // mirror of the source download).
+  // The CSV is trimmed to the same columns as the JSON (not a byte-for-byte mirror of the source download).
   const csvPath = join(DATA_DIR, 'naptan.csv');
   await writeFile(csvPath, toCsv(jsonRecords, JSON_COLUMNS));
   const csvHash = sha256(await readFile(csvPath));
