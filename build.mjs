@@ -521,7 +521,7 @@ th { background: #eee; }
 <p><a href="${RELEASE_BASE}/naptan.csv">naptan.csv</a> &mdash; dataset (CSV)</p>
 <p><a href="${RELEASE_BASE}/naptan.csv.gz">naptan.csv.gz</a> &mdash; dataset (CSV, gzipped)</p>
 <p><strong>Last refreshed:</strong> ${formatUK(generatedAt)}</p>
-<p>Stop data updates around 1am, 9am &amp; 5pm</p>
+<p>Stop data updates around 3am, 10am &amp; 6pm</p>
 ${errorsHtml}
 <p><button id="refreshBtn">Refresh now</button> <span id="refreshStatus"></span></p>
 <p><strong>Rail replacement stop data</strong></p>
