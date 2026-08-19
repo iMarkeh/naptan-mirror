@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-19T02:07:46.173Z",
+  "generatedAt": "2026-08-19T09:18:22.374Z",
   "source": "https://naptan.api.dft.gov.uk/v1/access-nodes?dataFormat=csv",
   "recordCount": 435338,
   "columns": [
@@ -18,10 +18,10 @@
     "Status"
   ],
   "conversionErrors": [],
-  "csvHash": "adecc1d11b8d9228",
-  "csvGzHash": "e1653701a599cfbf",
-  "csvGzSize": 12726678,
-  "jsonHash": "5b8bc7f96322e82a",
+  "csvHash": "d26055cbf57a2fdf",
+  "csvGzHash": "8fb7e7137e1a3905",
+  "csvGzSize": 12726703,
+  "jsonHash": "b8c3b75a65239599",
   "rrl": {
     "checkedAt": "2026-08-18T17:03:45.631Z",
     "generation": "1785317105801640",
