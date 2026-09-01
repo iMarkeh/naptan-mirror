@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-09-01T13:41:56.814Z",
+  "generatedAt": "2026-09-01T19:36:48.809Z",
   "source": "https://naptan.api.dft.gov.uk/v1/access-nodes?dataFormat=csv",
-  "recordCount": 435449,
+  "recordCount": 435450,
   "columns": [
     "ATCOCode",
     "NaptanCode",
@@ -18,16 +18,16 @@
     "Status"
   ],
   "conversionErrors": [],
-  "csvHash": "86534c023bdf8b0c",
-  "csvGzHash": "6d14b62ff8abbf83",
-  "csvGzSize": 12702816,
-  "jsonHash": "961fe825869a854f",
+  "csvHash": "c587c94a4d517971",
+  "csvGzHash": "dd583f6635535165",
+  "csvGzSize": 12702878,
+  "jsonHash": "7ca8224cbfd9489e",
   "rrl": {
-    "checkedAt": "2026-08-31T16:23:24.908Z",
-    "generation": "1785317105801640",
-    "etag": "\"3bca68e474eccb54f590d54102e5ab8e\"",
-    "datasetUpdatedAt": "2026-07-29T09:25:05.000Z",
-    "recordCount": 3496,
+    "checkedAt": "2026-09-01T19:36:47.308Z",
+    "generation": "1788254344011832",
+    "etag": "\"9b0461bd6d2b84ae9ae39e097b222834\"",
+    "datasetUpdatedAt": "2026-09-01T09:19:04.000Z",
+    "recordCount": 3534,
     "columns": [
       "AtcoCode",
       "CommonName_EN",
@@ -42,10 +42,10 @@
       "SFOCode",
       "MarkedStopAtcoCode"
     ],
-    "csvHash": "c1d1f3f6887a93fc",
+    "csvHash": "65b81940d98ee91e",
     "csvUrl": "https://github.com/iMarkeh/naptan-mirror/releases/download/data/rrl.csv",
     "source": "https://rrl.api.dft.gov.uk/v1/rail-replacement/stops/download?format=csv",
-    "status": "unchanged"
+    "status": "updated"
   },
   "formats": {
     "json": "https://github.com/iMarkeh/naptan-mirror/releases/download/data/naptan.json",
