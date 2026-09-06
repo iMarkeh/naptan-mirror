@@ -11,3 +11,11 @@ Private project. No support provided. Just public so things work.
 - `naptan.json` is a matrix: row 0 is the header, each following row is one stop in that same column order. `meta.json.columns` lists the header.
 - If any stops can't be converted from easting/northing, `meta.json.conversionErrors` lists them (ATCOCode, CommonName, easting/northing, reason, and the underlying error message) and they're shown on the status page.
 - Rail replacement stop data (`data/rrl.csv`) is published alongside the NaPTAN files. It's only checked about once a day, re-downloading only when DfT's source actually changes (tracked via the signed URL's GCS `x-goog-generation`/`etag`, with a content-hash safety net). `meta.json.rrl.datasetUpdatedAt` is the dataset's real last-updated time.
+
+## Data Source & Attribution
+
+This project uses data from the UK Department for Transport:
+- [NaPTAN](https://beta-naptan.dft.gov.uk/) (National Public Transport Access Nodes)
+- [Rail Replacement Location](https://beta-naptan.dft.gov.uk/) data
+
+Data is provided under the [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). © Crown copyright.

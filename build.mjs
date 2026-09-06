@@ -528,6 +528,10 @@ ${errorsHtml}
 <p><a href="${rrlCsvUrl}">rrl.csv</a> &mdash; dataset (CSV)</p>
 <p>Last updated: ${rrlLastUpdated}</p>
 <p>Last checked: ${rrlCheckedAt}${rrlNote}</p>
+<footer style="margin-top: 2em; padding-top: 1em; border-top: 1px solid #ccc; font-size: 0.9em; color: #666;">
+<p>Contains public sector information licensed under the <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government Licence v3.0</a>. © Crown copyright.</p>
+<p>Data source: <a href="https://beta-naptan.dft.gov.uk/">Department for Transport - NaPTAN</a></p>
+</footer>
 <script>
 document.getElementById('refreshBtn').addEventListener('click', async () => {
   const btn = document.getElementById('refreshBtn');
