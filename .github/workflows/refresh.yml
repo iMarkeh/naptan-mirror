@@ -35,7 +35,36 @@ jobs:
           RRL_URL: ${{ vars.RRL_URL }}
         run: node build.mjs
 
+      - name: Check for data changes
+        id: data-changed
+        # Compares only the data hashes (timestamps always differ). When
+        # nothing changed, restores public/ so the repo stays consistent with
+        # what is actually deployed, and deploy + release steps are skipped.
+        run: |
+          set -euo pipefail
+          hashes() {
+            jq -r '[.csvHash // "", .jsonHash // "", .csvGzHash // "", (.rrl.csvHash // "")] | join(" ")' "$1"
+          }
+          if ! git show HEAD:public/meta.json > /tmp/prev-meta.json 2>/dev/null; then
+            echo "No committed meta.json (first run); treating as changed."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          OLD="$(hashes /tmp/prev-meta.json)"
+          NEW="$(hashes public/meta.json)"
+          echo "previous: $OLD"
+          echo "current:  $NEW"
+          if [ "$OLD" = "$NEW" ]; then
+            echo "Data unchanged; skipping deploy and release."
+            git checkout -- public/meta.json public/index.html
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Data changed."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy to Cloudflare Pages
+        if: steps.data-changed.outputs.changed == 'true'
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -43,6 +72,7 @@ jobs:
           command: pages deploy public --project-name=naptan-mirror --branch main
 
       - name: Publish data files to GitHub Release
+        if: steps.data-changed.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -59,6 +89,64 @@ jobs:
           if [ -f data/rrl.csv ]; then
             gh release upload data data/rrl.csv --clobber
           fi
+
+      - name: Cleanup old Cloudflare deployments (keep last 2)
+        # Lean gate: runs only if every earlier step succeeded (or was skipped
+        # due to unchanged data). Any build/deploy/upload failure skips this,
+        # so broken mirrors keep their full rollback history.
+        if: success()
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -uo pipefail
+          PROJECT="naptan-mirror"
+          KEEP=2
+          BASE="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${PROJECT}"
+          AUTH="Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"
+          echo "Fetching latest deployment id..."
+          LATEST_ID="$(curl -fsSL --max-time 30 -H "$AUTH" "$BASE" | jq -r '.result.latest_deployment.id // empty')"
+          if [ -z "$LATEST_ID" ]; then
+            echo "::warning::Could not determine latest deployment id; deleting nothing."
+            exit 0
+          fi
+          echo "latest_deployment=$LATEST_ID"
+          # History sits at ~2 at steady state, so a single small page is enough.
+          LIST="$(curl -fsSL --max-time 30 -H "$AUTH" "$BASE/deployments?per_page=25")"
+          if [ "$(echo "$LIST" | jq -r '.success // false')" != "true" ]; then
+            echo "::warning::Failed to list deployments; deleting nothing."
+            exit 0
+          fi
+          TOTAL="$(echo "$LIST" | jq '.result | length')"
+          echo "Found $TOTAL deployments, keeping newest $KEEP (plus active $LATEST_ID)."
+          if [ "$TOTAL" -le "$KEEP" ]; then
+            echo "Nothing to delete."
+            exit 0
+          fi
+          IDS="$(echo "$LIST" | jq -r '(.result | sort_by(.created_on) | reverse) | .[].id')"
+          i=0
+          FAILED=0
+          for ID in $IDS; do
+            i=$((i + 1))
+            if [ "$i" -le "$KEEP" ]; then
+              echo "keep (recent #$i): $ID"
+              continue
+            fi
+            if [ "$ID" = "$LATEST_ID" ]; then
+              echo "keep (active production): $ID"
+              continue
+            fi
+            echo "delete: $ID"
+            if curl -fsSL --max-time 30 -X DELETE -H "$AUTH" "$BASE/deployments/$ID?force=true" -o /dev/null; then
+              echo "deleted $ID"
+            else
+              echo "::warning::failed to delete $ID (kept)"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+          echo "Cleanup done (failures: $FAILED). Active deploy $LATEST_ID untouched."
+          exit 0
 
       - name: Commit refreshed data
         run: |
