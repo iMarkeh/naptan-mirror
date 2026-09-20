@@ -60,7 +60,7 @@ jobs:
             gh release upload data data/rrl.csv --clobber
           fi
 
-      - name: Cleanup old Cloudflare deployments (keep last 2)
+      - name: Cleanup old Cloudflare deployments (keep last 4)
         # Lean gate: runs only if every earlier step succeeded. Any
         # build/deploy/upload failure skips this, so broken mirrors keep
         # their full rollback history.
@@ -72,7 +72,7 @@ jobs:
         run: |
           set -uo pipefail
           PROJECT="naptan-mirror"
-          KEEP=2
+          KEEP=4
           BASE="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${PROJECT}"
           AUTH="Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"
           echo "Fetching latest deployment id..."
@@ -82,7 +82,7 @@ jobs:
             exit 0
           fi
           echo "latest_deployment=$LATEST_ID"
-          # History sits at ~2 at steady state, so a single small page is enough.
+          # History sits at ~4 at steady state, so a single small page is enough.
           LIST="$(curl -fsSL --max-time 30 -H "$AUTH" "$BASE/deployments?per_page=25")"
           if [ "$(echo "$LIST" | jq -r '.success // false')" != "true" ]; then
             echo "::warning::Failed to list deployments; deleting nothing."
