@@ -35,36 +35,7 @@ jobs:
           RRL_URL: ${{ vars.RRL_URL }}
         run: node build.mjs
 
-      - name: Check for data changes
-        id: data-changed
-        # Compares only the data hashes (timestamps always differ). When
-        # nothing changed, restores public/ so the repo stays consistent with
-        # what is actually deployed, and deploy + release steps are skipped.
-        run: |
-          set -euo pipefail
-          hashes() {
-            jq -r '[.csvHash // "", .jsonHash // "", .csvGzHash // "", (.rrl.csvHash // "")] | join(" ")' "$1"
-          }
-          if ! git show HEAD:public/meta.json > /tmp/prev-meta.json 2>/dev/null; then
-            echo "No committed meta.json (first run); treating as changed."
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          OLD="$(hashes /tmp/prev-meta.json)"
-          NEW="$(hashes public/meta.json)"
-          echo "previous: $OLD"
-          echo "current:  $NEW"
-          if [ "$OLD" = "$NEW" ]; then
-            echo "Data unchanged; skipping deploy and release."
-            git checkout -- public/meta.json public/index.html
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Data changed."
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Deploy to Cloudflare Pages
-        if: steps.data-changed.outputs.changed == 'true'
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -72,7 +43,6 @@ jobs:
           command: pages deploy public --project-name=naptan-mirror --branch main
 
       - name: Publish data files to GitHub Release
-        if: steps.data-changed.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -91,9 +61,9 @@ jobs:
           fi
 
       - name: Cleanup old Cloudflare deployments (keep last 2)
-        # Lean gate: runs only if every earlier step succeeded (or was skipped
-        # due to unchanged data). Any build/deploy/upload failure skips this,
-        # so broken mirrors keep their full rollback history.
+        # Lean gate: runs only if every earlier step succeeded. Any
+        # build/deploy/upload failure skips this, so broken mirrors keep
+        # their full rollback history.
         if: success()
         continue-on-error: true
         env:
