@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-06T06:52:18.313Z",
+  "generatedAt": "2026-10-06T15:27:13.152Z",
   "source": "https://naptan.api.dft.gov.uk/v1/access-nodes?dataFormat=csv",
-  "recordCount": 435672,
+  "recordCount": 435675,
   "columns": [
     "ATCOCode",
     "NaptanCode",
@@ -18,10 +18,10 @@
     "Status"
   ],
   "conversionErrors": [],
-  "csvHash": "d5e92acbea418dea",
-  "csvGzHash": "1b07cfb184482c57",
-  "csvGzSize": 12691302,
-  "jsonHash": "2e2310429c7257b5",
+  "csvHash": "5b2671b275ebfcb8",
+  "csvGzHash": "10738d60a43ca14b",
+  "csvGzSize": 12691443,
+  "jsonHash": "bbb724526fa764f6",
   "rrl": {
     "checkedAt": "2026-10-05T17:24:50.180Z",
     "generation": "1790689108070497",
