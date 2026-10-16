@@ -559,11 +559,24 @@ document.getElementById('refreshBtn').addEventListener('click', async () => {
 `;
   await writeFile(join(PUBLIC_DIR, 'index.html'), html);
 
+  // robots.txt: ask all crawlers to stay out of the whole site.
+  await writeFile(
+    join(PUBLIC_DIR, 'robots.txt'),
+    'User-agent: *\nDisallow: /\n'
+  );
+
+  // _headers: discourage search-engine indexing of every path. Cloudflare
+  // Pages applies this X-Robots-Tag header to all responses.
+  await writeFile(
+    join(PUBLIC_DIR, '_headers'),
+    '/*\n  X-Robots-Tag: noindex, nofollow\n'
+  );
+
   // Cleanup temp download
   await rm(TMP_CSV, { force: true }).catch(() => {});
 
   console.log(
-    `[done] wrote ${records.length} records (${JSON_COLUMNS.length} columns) -> data/naptan.json, data/naptan.csv, public/meta.json, public/index.html`
+    `[done] wrote ${records.length} records (${JSON_COLUMNS.length} columns) -> data/naptan.json, data/naptan.csv, public/meta.json, public/index.html, public/robots.txt, public/_headers`
   );
   console.log(`[done] rrl ${rrlChecked ? 'checked' : 'gated/skipped'}: status=${rrl.status ?? 'n/a'}`);
 }
