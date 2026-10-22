@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-21T20:21:50.966Z",
+  "generatedAt": "2026-10-22T05:22:57.626Z",
   "source": "https://naptan.api.dft.gov.uk/v1/access-nodes?dataFormat=csv",
   "recordCount": 435745,
   "columns": [
@@ -23,7 +23,7 @@
   "csvGzSize": 12694551,
   "jsonHash": "0bdc32aa2fb37eab",
   "rrl": {
-    "checkedAt": "2026-10-21T05:20:15.280Z",
+    "checkedAt": "2026-10-22T05:22:57.625Z",
     "generation": "1792506310153509",
     "etag": "\"544eca8d1ba3f4cd899c1049e2f9bae0\"",
     "datasetUpdatedAt": "2026-10-20T14:25:10.000Z",
@@ -45,7 +45,7 @@
     "csvHash": "af351a543c40a587",
     "csvUrl": "https://github.com/iMarkeh/naptan-mirror/releases/download/data/rrl.csv",
     "source": "https://rrl.api.dft.gov.uk/v1/rail-replacement/stops/download?format=csv",
-    "status": "updated"
+    "status": "unchanged"
   },
   "formats": {
     "json": "https://github.com/iMarkeh/naptan-mirror/releases/download/data/naptan.json",
